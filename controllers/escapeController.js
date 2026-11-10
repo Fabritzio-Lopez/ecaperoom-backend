@@ -14,8 +14,49 @@ const normalizeText = (text) => {
 };
 
 /**
+ * Definición oficial de las 7 estaciones del Escape Room ODS 8
+ */
+const PUZZLE_SOLUTIONS = {
+  1: {
+    correct: ['B'],
+    explanation: '¡Correcto! El ODS 8 busca promover el crecimiento económico inclusivo y sostenible, el empleo pleno y el trabajo decente para todos.',
+    badge: 'Conocedor de la Agenda 2030',
+  },
+  2: {
+    correct: ['C'],
+    explanation: '¡Excelente! El trabajo decente implica un empleo productivo con derechos, ingresos justos, seguridad social y condiciones dignas.',
+    badge: 'Defensor de Derechos Laborales',
+  },
+  3: {
+    correct: ['B'],
+    explanation: '¡Exacto! La igualdad de oportunidades, la no discriminación y la protección social son pilares irremplazables del trabajo decente.',
+    badge: 'Impulsor de la Equidad',
+  },
+  4: {
+    correct: ['VERDADERO', 'V', 'TRUE'],
+    explanation: '¡Correcto! La Meta 8.5 de la ONU persigue explícitamente el empleo pleno, productivo y decente para todas las mujeres y hombres, incluidos los jóvenes y las personas con discapacidad.',
+    badge: 'Estratega de la Meta 8.5',
+  },
+  5: {
+    correct: ['FALSO', 'F', 'FALSE'],
+    explanation: '¡Falso! El desempleo juvenil tiene consecuencias críticas: frena la innovación, perpetúa ciclos de pobreza y debilita el crecimiento económico de un país.',
+    badge: 'Vigilante del Futuro Laboral',
+  },
+  6: {
+    correct: ['C'],
+    explanation: '¡Identificación confirmada! Proyecto: "Jóvenes Creadores: Del Negocio Informal al Trabajo Digno", impulsando la formalización y el talento juvenil.',
+    badge: 'Miembro de Jóvenes Creadores',
+  },
+  7: {
+    correct: ['D', '82.2', '82,2'],
+    explanation: '¡Bóveda Final Desbloqueada! Según estadísticas de la OIT y análisis laborales, la informalidad y precariedad laboral en Bolivia alcanza el 82.2%, evidenciando la urgencia de proyectos de formalización digna.',
+    badge: 'Embajador Maestro ODS 8',
+  },
+};
+
+/**
  * 1. POST /api/verify-puzzle
- * Valida de forma segura desde el backend las respuestas de cada acertijo del Escape Room.
+ * Valida de forma segura desde el backend las respuestas de los 7 acertijos del Escape Room.
  */
 const verifyPuzzle = async (req, res) => {
   try {
@@ -29,80 +70,34 @@ const verifyPuzzle = async (req, res) => {
     }
 
     const levelNumber = parseInt(level, 10);
+    const puzzle = PUZZLE_SOLUTIONS[levelNumber];
 
-    switch (levelNumber) {
-      case 1: {
-        // Nivel 1 (Cerrojo Numérico): 42
-        // Meta ODS 8.1 (Crecimiento del 7% anual en países menos adelantados) * 6 ejes de acción laboral
-        const cleanAnswer = normalizeText(answer);
-        if (cleanAnswer === '42') {
-          return res.status(200).json({
-            success: true,
-            level: 1,
-            nextLevel: 2,
-            message:
-              '¡Cerrojo 1 desbloqueado! Crecimiento económico sostenible (7%) multiplicado por los 6 ejes estratégicos de empleo = 42.',
-            badge: 'Pionero de la Productividad',
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          level: 1,
-          message:
-            'Combinación incorrecta. Pista: Multiplica la tasa de crecimiento objetivo de la Meta 8.1 por los 6 pilares de la OIT.',
-        });
-      }
-
-      case 2: {
-        // Nivel 2 (Cerrojo de Palabra): EMPRESAS
-        // Actores clave en la generación de empleo digno y valor económico
-        const cleanAnswer = normalizeText(answer);
-        if (cleanAnswer === 'EMPRESAS') {
-          return res.status(200).json({
-            success: true,
-            level: 2,
-            nextLevel: 3,
-            message:
-              '¡Cerrojo 2 abierto! Las EMPRESAS y MIPYMES son el motor central para crear trabajo formal, inclusivo y productivo.',
-            badge: 'Impulsor del Ecosistema Laboral',
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          level: 2,
-          message:
-            'Palabra clave incorrecta. Pista: Sector de 8 letras que genera más del 70% del empleo formal a nivel global.',
-        });
-      }
-
-      case 3: {
-        // Nivel 3 (Cerrojo de Suma): 10
-        // Sinergia de ODS conectados: 4 (Educación) + 5 (Igualdad de género) + 1 (Fin de la pobreza) = 10
-        const cleanAnswer = normalizeText(answer);
-        if (cleanAnswer === '10') {
-          return res.status(200).json({
-            success: true,
-            level: 3,
-            nextLevel: 'victory',
-            message:
-              '¡Cerrojo 3 superado! Sinergia de ODS conectados: 4 (Educación) + 5 (Igualdad de Género) + 1 (Fin de la Pobreza) = 10. ¡Has liberado el potencial económico!',
-            badge: 'Embajador ODS 8',
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          level: 3,
-          message:
-            'Suma incorrecta. Pista: Suma los números de los 3 ODS señalados en los monitores de soporte.',
-        });
-      }
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Nivel no reconocido. Los niveles válidos son 1, 2 y 3.',
-        });
+    if (!puzzle) {
+      return res.status(400).json({
+        success: false,
+        message: `Nivel no reconocido (${level}). Los niveles válidos son del 1 al 7.`,
+      });
     }
+
+    const cleanAnswer = normalizeText(answer);
+    const isCorrect = puzzle.correct.some((valid) => normalizeText(valid) === cleanAnswer);
+
+    if (isCorrect) {
+      const isFinal = levelNumber === 7;
+      return res.status(200).json({
+        success: true,
+        level: levelNumber,
+        nextLevel: isFinal ? 'victory' : levelNumber + 1,
+        message: puzzle.explanation,
+        badge: puzzle.badge,
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      level: levelNumber,
+      message: 'Respuesta incorrecta. Has activado la alarma del cerrojo.',
+    });
   } catch (error) {
     console.error('Error en verifyPuzzle:', error);
     return res.status(500).json({
@@ -121,7 +116,6 @@ const submitScore = async (req, res) => {
   try {
     const { playerName, completionTimeSeconds } = req.body;
 
-    // Validaciones estrictas: no permitir vacíos
     if (!playerName || typeof playerName !== 'string' || playerName.trim().length < 1) {
       return res.status(400).json({
         success: false,
@@ -144,7 +138,6 @@ const submitScore = async (req, res) => {
     const sanitizedPlayerName = playerName.trim().slice(0, 30);
     const parsedTime = Math.round(Number(completionTimeSeconds));
 
-    // Inserción en Supabase (vía PostgreSQL Pool o Supabase Client)
     const record = await insertScore(sanitizedPlayerName, parsedTime);
 
     return res.status(201).json({
@@ -164,7 +157,7 @@ const submitScore = async (req, res) => {
 
 /**
  * 3. GET /api/leaderboard
- * Retorna los mejores tiempos ordenados de forma ascendente (solo registros válidos)
+ * Retorna los mejores tiempos ordenados de forma ascendente.
  */
 const getLeaderboard = async (req, res) => {
   try {
@@ -187,7 +180,7 @@ const getLeaderboard = async (req, res) => {
 
 /**
  * 4. POST /api/leaderboard/cleanup
- * Limpia y purga todos los registros vacíos o de prueba
+ * Limpia y purga todos los registros vacíos o de prueba.
  */
 const cleanupLeaderboard = async (req, res) => {
   try {
