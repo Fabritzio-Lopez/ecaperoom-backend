@@ -6,16 +6,18 @@ const databaseUrl = process.env.DATABASE_URL;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-// Almacén en memoria de respaldo (Fallback) para permitir jugar localmente si el proveedor de internet local no soporta IPv6
-let fallbackLeaderboard = [
-  { id: '1', player_name: 'Agente ODS-8', completion_time_seconds: 125, created_at: new Date().toISOString() },
-  { id: '2', player_name: 'EcoEconomista', completion_time_seconds: 145, created_at: new Date().toISOString() },
-  { id: '3', player_name: 'InnovadorSocial', completion_time_seconds: 180, created_at: new Date().toISOString() },
-  { id: '4', player_name: 'GuardianLaboral', completion_time_seconds: 210, created_at: new Date().toISOString() },
-  { id: '5', player_name: 'Pionero2030', completion_time_seconds: 255, created_at: new Date().toISOString() },
-];
-
+// Almacén en memoria de respaldo limpio (sin datos simulados vacíos)
+let fallbackLeaderboard = [];
 let isDbConnected = false;
+
+// Nombres de prueba / placeholder que se limpian automáticamente
+const DUMMY_NAMES = [
+  'Agente ODS-8',
+  'EcoEconomista',
+  'InnovadorSocial',
+  'GuardianLaboral',
+  'Pionero2030',
+];
 
 // 1. Configuración de conexión directa a PostgreSQL
 let pool = null;
@@ -47,8 +49,49 @@ if (supabaseUrl && supabaseAnonKey) {
 }
 
 /**
- * Inicializa la base de datos automáticamente en el primer arranque:
- * Crea la tabla leaderboard e índices si no existen.
+ * Limpia registros vacíos, nulos o de prueba de la base de datos
+ */
+async function cleanEmptyScores() {
+  // Limpieza en PostgreSQL
+  if (pool) {
+    try {
+      const query = `
+        DELETE FROM public.leaderboard
+        WHERE player_name IS NULL
+           OR trim(player_name) = ''
+           OR player_name = 'undefined'
+           OR player_name = 'null'
+           OR player_name = ANY($1)
+           OR completion_time_seconds IS NULL
+           OR completion_time_seconds <= 0;
+      `;
+      const res = await pool.query(query, [DUMMY_NAMES]);
+      console.log(`🧹 Registros vacíos o de prueba eliminados en PostgreSQL: ${res.rowCount || 0}`);
+    } catch (err) {
+      console.warn('Advertencia en limpieza PostgreSQL:', err.message);
+    }
+  }
+
+  // Limpieza en memoria local
+  const prevCount = fallbackLeaderboard.length;
+  fallbackLeaderboard = fallbackLeaderboard.filter(
+    (item) =>
+      item &&
+      item.player_name &&
+      item.player_name.trim().length > 0 &&
+      item.player_name !== 'undefined' &&
+      item.player_name !== 'null' &&
+      !DUMMY_NAMES.includes(item.player_name.trim()) &&
+      Number(item.completion_time_seconds) > 0
+  );
+  const cleaned = prevCount - fallbackLeaderboard.length;
+  if (cleaned > 0) {
+    console.log(`🧹 Registros vacíos o de prueba eliminados en memoria: ${cleaned}`);
+  }
+}
+
+/**
+ * Inicializa la base de datos y ejecuta la limpieza de vacíos
  */
 async function initializeDatabase() {
   if (!pool) {
@@ -64,7 +107,7 @@ async function initializeDatabase() {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.leaderboard (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          player_name TEXT NOT NULL CHECK (char_length(trim(player_name)) >= 2 AND char_length(player_name) <= 30),
+          player_name TEXT NOT NULL CHECK (char_length(trim(player_name)) >= 1 AND char_length(player_name) <= 30),
           completion_time_seconds INTEGER NOT NULL CHECK (completion_time_seconds > 0),
           created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
         );
@@ -73,35 +116,32 @@ async function initializeDatabase() {
         ON public.leaderboard (completion_time_seconds ASC, created_at ASC);
       `);
 
-      const countRes = await client.query('SELECT COUNT(*) FROM public.leaderboard');
-      if (parseInt(countRes.rows[0].count, 10) === 0) {
-        await client.query(`
-          INSERT INTO public.leaderboard (player_name, completion_time_seconds)
-          VALUES 
-            ('Agente ODS-8', 125),
-            ('EcoEconomista', 145),
-            ('InnovadorSocial', 180),
-            ('GuardianLaboral', 210),
-            ('Pionero2030', 255)
-        `);
-      }
-
       isDbConnected = true;
-      console.log('✅ Base de datos Supabase conectada con éxito. Tabla `leaderboard` lista.');
+      console.log('✅ Base de datos Supabase conectada con éxito.');
+
+      // Ejecutar limpieza automática al arrancar
+      await cleanEmptyScores();
     } finally {
       client.release();
     }
   } catch (error) {
     isDbConnected = false;
     console.warn('⚠️ Nota de conexión Supabase:', error.message);
-    console.log('ℹ️ Modo Resiliente Activado: El juego funcionará al 100% con persistencia local de respaldo.');
+    console.log('ℹ️ Modo Resiliente Activado con memoria limpia.');
   }
 }
 
 /**
- * Registra un puntaje en la base de datos
+ * Registra un puntaje válido en la base de datos
  */
 async function insertScore(playerName, completionTimeSeconds) {
+  const sanitized = (playerName || '').toString().trim().slice(0, 30);
+  const time = Math.round(Number(completionTimeSeconds));
+
+  if (!sanitized || time <= 0) {
+    throw new Error('Datos inválidos: el nombre no puede estar vacío y el tiempo debe ser mayor a 0.');
+  }
+
   if (pool && isDbConnected) {
     try {
       const query = `
@@ -109,7 +149,7 @@ async function insertScore(playerName, completionTimeSeconds) {
         VALUES ($1, $2)
         RETURNING id, player_name, completion_time_seconds, created_at;
       `;
-      const result = await pool.query(query, [playerName, completionTimeSeconds]);
+      const result = await pool.query(query, [sanitized, time]);
       return result.rows[0];
     } catch (err) {
       console.error('Error insertando en PostgreSQL:', err.message);
@@ -120,7 +160,7 @@ async function insertScore(playerName, completionTimeSeconds) {
     try {
       const { data, error } = await supabaseClient
         .from('leaderboard')
-        .insert([{ player_name: playerName, completion_time_seconds: completionTimeSeconds }])
+        .insert([{ player_name: sanitized, completion_time_seconds: time }])
         .select('id, player_name, completion_time_seconds, created_at')
         .single();
       if (!error && data) return data;
@@ -129,11 +169,11 @@ async function insertScore(playerName, completionTimeSeconds) {
     }
   }
 
-  // Respaldo en memoria local
+  // Respaldo en memoria local (solo registros con nombre válido)
   const newRecord = {
     id: 'local-' + Date.now(),
-    player_name: playerName,
-    completion_time_seconds: completionTimeSeconds,
+    player_name: sanitized,
+    completion_time_seconds: time,
     created_at: new Date().toISOString(),
   };
   fallbackLeaderboard.push(newRecord);
@@ -141,7 +181,7 @@ async function insertScore(playerName, completionTimeSeconds) {
 }
 
 /**
- * Recupera el Top N mejores tiempos ordenados de forma ascendente
+ * Recupera solo resultados válidos (excluyendo vacíos, nulos y pruebas)
  */
 async function getTopScores(limit = 10) {
   if (pool && isDbConnected) {
@@ -149,10 +189,16 @@ async function getTopScores(limit = 10) {
       const query = `
         SELECT id, player_name, completion_time_seconds, created_at
         FROM public.leaderboard
+        WHERE player_name IS NOT NULL
+          AND trim(player_name) != ''
+          AND player_name != 'undefined'
+          AND player_name != 'null'
+          AND player_name != ALL($2)
+          AND completion_time_seconds > 0
         ORDER BY completion_time_seconds ASC, created_at ASC
         LIMIT $1;
       `;
-      const result = await pool.query(query, [limit]);
+      const result = await pool.query(query, [limit, DUMMY_NAMES]);
       return result.rows;
     } catch (err) {
       console.error('Error consultando PostgreSQL:', err.message);
@@ -167,14 +213,32 @@ async function getTopScores(limit = 10) {
         .order('completion_time_seconds', { ascending: true })
         .order('created_at', { ascending: true })
         .limit(limit);
-      if (!error && data) return data;
+
+      if (!error && data) {
+        return data.filter(
+          (item) =>
+            item &&
+            item.player_name &&
+            item.player_name.trim().length > 0 &&
+            !DUMMY_NAMES.includes(item.player_name.trim()) &&
+            Number(item.completion_time_seconds) > 0
+        );
+      }
     } catch (err) {
       console.error('Error consultando Supabase REST:', err.message);
     }
   }
 
-  // Respaldo en memoria ordenado ascendente
+  // Respaldo en memoria limpio
   return [...fallbackLeaderboard]
+    .filter(
+      (item) =>
+        item &&
+        item.player_name &&
+        item.player_name.trim().length > 0 &&
+        !DUMMY_NAMES.includes(item.player_name.trim()) &&
+        Number(item.completion_time_seconds) > 0
+    )
     .sort((a, b) => a.completion_time_seconds - b.completion_time_seconds)
     .slice(0, limit);
 }
@@ -183,6 +247,7 @@ module.exports = {
   pool,
   supabaseClient,
   initializeDatabase,
+  cleanEmptyScores,
   insertScore,
   getTopScores,
 };

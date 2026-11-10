@@ -1,4 +1,4 @@
-const { insertScore, getTopScores } = require('../config/db');
+const { insertScore, getTopScores, cleanEmptyScores } = require('../config/db');
 
 /**
  * Normaliza cadenas de texto para comparaciones tolerantes a mayúsculas, espacios y acentos.
@@ -121,11 +121,11 @@ const submitScore = async (req, res) => {
   try {
     const { playerName, completionTimeSeconds } = req.body;
 
-    // Validaciones de entrada
-    if (!playerName || typeof playerName !== 'string' || playerName.trim().length < 2) {
+    // Validaciones estrictas: no permitir vacíos
+    if (!playerName || typeof playerName !== 'string' || playerName.trim().length < 1) {
       return res.status(400).json({
         success: false,
-        message: 'El nombre del jugador debe tener al menos 2 caracteres.',
+        message: 'El nombre del jugador no puede estar vacío.',
       });
     }
 
@@ -164,7 +164,7 @@ const submitScore = async (req, res) => {
 
 /**
  * 3. GET /api/leaderboard
- * Retorna los 10 mejores tiempos ordenados de forma ascendente.
+ * Retorna los mejores tiempos ordenados de forma ascendente (solo registros válidos)
  */
 const getLeaderboard = async (req, res) => {
   try {
@@ -185,8 +185,34 @@ const getLeaderboard = async (req, res) => {
   }
 };
 
+/**
+ * 4. POST /api/leaderboard/cleanup
+ * Limpia y purga todos los registros vacíos o de prueba
+ */
+const cleanupLeaderboard = async (req, res) => {
+  try {
+    await cleanEmptyScores();
+    const cleanList = await getTopScores(10);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Limpieza completada. Los registros vacíos han sido eliminados.',
+      count: cleanList.length,
+      leaderboard: cleanList,
+    });
+  } catch (error) {
+    console.error('Error en cleanupLeaderboard:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al limpiar los registros.',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   verifyPuzzle,
   submitScore,
   getLeaderboard,
+  cleanupLeaderboard,
 };
