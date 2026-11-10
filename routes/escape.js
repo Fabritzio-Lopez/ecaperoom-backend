@@ -4,19 +4,21 @@ const {
   verifyPuzzle,
   submitScore,
   getLeaderboard,
-  cleanupLeaderboard,
+  adminLogin,
+  getAdminPlayers,
+  deleteAdminPlayer,
+  clearAdminLeaderboard,
 } = require('../controllers/escapeController');
 
-// Ruta 1: POST /api/verify-puzzle -> Valida las respuestas de cada nivel
+// Rutas Públicas de Jugador
 router.post('/verify-puzzle', verifyPuzzle);
-
-// Ruta 2: POST /api/score -> Guarda el tiempo y jugador en Supabase
 router.post('/score', submitScore);
-
-// Ruta 3: GET /api/leaderboard -> Obtiene el Top 10 de mejores tiempos
 router.get('/leaderboard', getLeaderboard);
 
-// Ruta 4: POST /api/leaderboard/cleanup -> Limpia registros vacíos o pruebas
-router.post('/leaderboard/cleanup', cleanupLeaderboard);
+// Rutas Protegidas de Administrador
+router.post('/admin/login', adminLogin);
+router.get('/admin/players', getAdminPlayers);
+router.delete('/admin/players/:id', deleteAdminPlayer);
+router.post('/admin/clear-all', clearAdminLeaderboard);
 
 module.exports = router;

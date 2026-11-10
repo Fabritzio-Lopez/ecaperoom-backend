@@ -1,7 +1,18 @@
-const { insertScore, getTopScores, cleanEmptyScores } = require('../config/db');
+const {
+  insertScore,
+  getTopScores,
+  cleanEmptyScores,
+  deletePlayerById,
+  clearAllLeaderboard,
+} = require('../config/db');
+
+// Clave y usuario maestro de Administrador
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'adminODS8*2030';
+const ADMIN_SECRET_TOKEN = 'token-admin-ods8-super-secret-key-2030';
 
 /**
- * Normaliza cadenas de texto para comparaciones tolerantes a mayúsculas, espacios y acentos.
+ * Normaliza cadenas de texto para comparaciones
  */
 const normalizeText = (text) => {
   if (!text) return '';
@@ -14,7 +25,7 @@ const normalizeText = (text) => {
 };
 
 /**
- * Definición oficial de las 7 estaciones del Escape Room ODS 8
+ * 7 Estaciones y Respuestas Oficiales del Escape Room
  */
 const PUZZLE_SOLUTIONS = {
   1: {
@@ -34,29 +45,28 @@ const PUZZLE_SOLUTIONS = {
   },
   4: {
     correct: ['VERDADERO', 'V', 'TRUE'],
-    explanation: '¡Correcto! La Meta 8.5 de la ONU persigue explícitamente el empleo pleno, productivo y decente para todas las mujeres y hombres, incluidos los jóvenes y las personas con discapacidad.',
+    explanation: '¡Correcto! La Meta 8.5 de la ONU persigue explícitamente el empleo pleno, productivo y decente para todas las personas.',
     badge: 'Estratega de la Meta 8.5',
   },
   5: {
     correct: ['FALSO', 'F', 'FALSE'],
-    explanation: '¡Falso! El desempleo juvenil tiene consecuencias críticas: frena la innovación, perpetúa ciclos de pobreza y debilita el crecimiento económico de un país.',
+    explanation: '¡Falso! El desempleo juvenil tiene consecuencias críticas para el desarrollo económico y perpetúa ciclos de pobreza.',
     badge: 'Vigilante del Futuro Laboral',
   },
   6: {
     correct: ['C'],
-    explanation: '¡Identificación confirmada! Proyecto: "Jóvenes Creadores: Del Negocio Informal al Trabajo Digno", impulsando la formalización y el talento juvenil.',
+    explanation: '¡Identificación confirmada! Proyecto: "Jóvenes Creadores: Del Negocio Informal al Trabajo Digno".',
     badge: 'Miembro de Jóvenes Creadores',
   },
   7: {
     correct: ['D', '82.2', '82,2'],
-    explanation: '¡Bóveda Final Desbloqueada! Según estadísticas de la OIT y análisis laborales, la informalidad y precariedad laboral en Bolivia alcanza el 82.2%, evidenciando la urgencia de proyectos de formalización digna.',
+    explanation: '¡Bóveda Final Desbloqueada! Según estadísticas de la OIT, la tasa de informalidad y precariedad laboral en Bolivia alcanza el 82.2%.',
     badge: 'Embajador Maestro ODS 8',
   },
 };
 
 /**
  * 1. POST /api/verify-puzzle
- * Valida de forma segura desde el backend las respuestas de los 7 acertijos del Escape Room.
  */
 const verifyPuzzle = async (req, res) => {
   try {
@@ -110,11 +120,11 @@ const verifyPuzzle = async (req, res) => {
 
 /**
  * 2. POST /api/score
- * Registra el tiempo y apodo del jugador en la base de datos de Supabase.
+ * Registra tiempo, nombre, historial de respuestas y vidas
  */
 const submitScore = async (req, res) => {
   try {
-    const { playerName, completionTimeSeconds } = req.body;
+    const { playerName, completionTimeSeconds, answers, livesRemaining } = req.body;
 
     if (!playerName || typeof playerName !== 'string' || playerName.trim().length < 1) {
       return res.status(400).json({
@@ -137,12 +147,13 @@ const submitScore = async (req, res) => {
 
     const sanitizedPlayerName = playerName.trim().slice(0, 30);
     const parsedTime = Math.round(Number(completionTimeSeconds));
+    const cleanLives = livesRemaining !== undefined ? Number(livesRemaining) : 3;
 
-    const record = await insertScore(sanitizedPlayerName, parsedTime);
+    const record = await insertScore(sanitizedPlayerName, parsedTime, answers || [], cleanLives);
 
     return res.status(201).json({
       success: true,
-      message: '¡Puntaje registrado exitosamente en el Leaderboard!',
+      message: '¡Puntaje e historial registrados exitosamente en el Leaderboard!',
       record,
     });
   } catch (error) {
@@ -157,7 +168,6 @@ const submitScore = async (req, res) => {
 
 /**
  * 3. GET /api/leaderboard
- * Retorna los mejores tiempos ordenados de forma ascendente.
  */
 const getLeaderboard = async (req, res) => {
   try {
@@ -179,25 +189,121 @@ const getLeaderboard = async (req, res) => {
 };
 
 /**
- * 4. POST /api/leaderboard/cleanup
- * Limpia y purga todos los registros vacíos o de prueba.
+ * ==============================================================
+ * CONTROLADORES DE ADMINISTRADOR (LOGIN, MONITOREO Y LIMPIEZA)
+ * ==============================================================
  */
-const cleanupLeaderboard = async (req, res) => {
+
+// Middleware o función auxiliar para verificar si es admin
+const checkIsAdmin = (req) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return false;
+  const token = authHeader.replace('Bearer ', '').trim();
+  return token === ADMIN_SECRET_TOKEN;
+};
+
+/**
+ * POST /api/admin/login
+ * Inicia sesión de Administrador
+ */
+const adminLogin = async (req, res) => {
   try {
-    await cleanEmptyScores();
-    const cleanList = await getTopScores(10);
+    const { username, password } = req.body;
+
+    if (username === ADMIN_USER && password === ADMIN_PASSWORD) {
+      return res.status(200).json({
+        success: true,
+        message: 'Sesión de Administrador iniciada correctamente.',
+        token: ADMIN_SECRET_TOKEN,
+        user: { username: ADMIN_USER, role: 'admin' },
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'Credenciales de Administrador incorrectas.',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error en inicio de sesión.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * GET /api/admin/players
+ * Devuelve todos los jugadores con sus respuestas completas para el panel de monitoreo
+ */
+const getAdminPlayers = async (req, res) => {
+  try {
+    if (!checkIsAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado: Se requiere autenticación de Administrador.' });
+    }
+
+    const allPlayers = await getTopScores(100);
+    return res.status(200).json({
+      success: true,
+      count: allPlayers.length,
+      players: allPlayers,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error al recuperar listado de jugadores.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * DELETE /api/admin/players/:id
+ * Elimina a un jugador individual
+ */
+const deleteAdminPlayer = async (req, res) => {
+  try {
+    if (!checkIsAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado: Se requiere autenticación de Administrador.' });
+    }
+
+    const { id } = req.params;
+    await deletePlayerById(id);
 
     return res.status(200).json({
       success: true,
-      message: 'Limpieza completada. Los registros vacíos han sido eliminados.',
-      count: cleanList.length,
-      leaderboard: cleanList,
+      message: 'Jugador eliminado correctamente.',
     });
   } catch (error) {
-    console.error('Error en cleanupLeaderboard:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al limpiar los registros.',
+      message: 'Error al eliminar jugador.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * POST /api/admin/clear-all
+ * Elimina todos los registros del juego
+ */
+const clearAdminLeaderboard = async (req, res) => {
+  try {
+    if (!checkIsAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado: Se requiere autenticación de Administrador.' });
+    }
+
+    await clearAllLeaderboard();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Todos los registros han sido eliminados por el Administrador.',
+      players: [],
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error al vaciar registros.',
       error: error.message,
     });
   }
@@ -207,5 +313,8 @@ module.exports = {
   verifyPuzzle,
   submitScore,
   getLeaderboard,
-  cleanupLeaderboard,
+  adminLogin,
+  getAdminPlayers,
+  deleteAdminPlayer,
+  clearAdminLeaderboard,
 };
