@@ -13,7 +13,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 app.use(
   cors({
     origin: CORS_ORIGIN === '*' ? '*' : CORS_ORIGIN.split(',').map((o) => o.trim()),
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
@@ -24,13 +24,16 @@ app.get('/', (req, res) => {
   res.json({
     service: 'API Escape Room ODS 8 - Trabajo Decente y Crecimiento Económico',
     status: 'ONLINE',
-    version: '1.0.0',
+    version: '1.1.0',
     database: process.env.DATABASE_URL ? 'PostgreSQL Supabase (Direct Wire Pool)' : 'Supabase REST API',
     endpoints: {
       health: 'GET /api/health',
       verifyPuzzle: 'POST /api/verify-puzzle',
       submitScore: 'POST /api/score',
       leaderboard: 'GET /api/leaderboard',
+      adminLogin: 'POST /api/admin/login',
+      adminPlayers: 'GET /api/admin/players',
+      adminClear: 'POST /api/admin/clear-all',
     },
   });
 });

@@ -7,8 +7,8 @@ const {
 } = require('../config/db');
 
 // Clave y usuario maestro de Administrador
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'adminODS8*2030';
+const ADMIN_USER = process.env.ADMIN_USER || 'Mari';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '19112004';
 const ADMIN_SECRET_TOKEN = 'token-admin-ods8-super-secret-key-2030';
 
 /**
